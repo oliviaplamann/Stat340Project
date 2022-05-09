@@ -1,0 +1,269 @@
+---
+title: "An Analysis of 2014 Men's Basketball and Academic Performance"
+subtitle: Sydney Mathiason, Rachel Rothenberg, Isaac Bond, and Olivia Plamann
+output:
+  html_document: default
+  pdf_document: default
+---
+
+### Introduction:
+
+Student-athletes are hard-working individuals that put their talents and efforts into a sport all the while taking classes to pursue a degree.  The efforts that are put in to perform during a game or match are similar to the efforts and drive needed to learn and study, and student athletes are required to have the motivation for both.  This led us to wonder, how does collegiate athletic success relate to academic success?  Are the teams that put in the work at the gym and during the game the same teams that put in the work in the classroom, or do the pressures and expectations of being a part of a collegiate team overpower the academic performance?  After thinking about these questions, we decided to dive deeper into collegiate sports by focusing just on basketball.  We chose basketball because one member of our group, Sydney Mathiason, is on the basketball team, so she could provide better insight into which statistics would be a good measure of team performance.  On top of this, we all really enjoy watching and are passionate about NCAA basketball. Answering these aforementioned questions may help to foster future basketball programs that not only excel on the court but also in the classroom. This would lead to more quality recruits and excelling programs that make a profit for the school and good environment for the athletes.  In data collected from the NCAA on 2014 Division I men's basketball, we show that some measures of team performance on the court are predictive of higher academic eligibility after controlling for year and sport.
+
+
+
+### Data Section:
+
+In order to find various measures of basketball team performance, we obtained data from the NCAA^[https://www.ncaa.com/stats/basketball-men/d1/2014/team/217] on Division I men’s basketball.  From this dataset, we only kept the basketball teams from the 2014 season to match with their respective academic scores from the same year.  There were many variables included in this dataset that we plan to use in our analyses.  For reference, here is a list of the variables and respective descriptions from the basketball dataset:
+
+TEAM: The Division I college basketball school
+
+G: Number of games played
+
+W: Number of games won
+
+ADJOE: Adjusted Offensive Efficiency (An estimate of the offensive efficiency (points scored per 100 possessions) a team would have against the average Division I defense)
+
+ADJDE: Adjusted Defensive Efficiency (An estimate of the defensive efficiency (points allowed per 100 possessions) a team would have against the average Division I offense)
+
+BARTHAG: Power Rating (Chance of beating an average Division I team)
+
+EFG_O: Effective Field Goal Percentage Shot
+
+EFG_D: Effective Field Goal Percentage Allowed
+
+TOR: Turnover Percentage Allowed (Turnover Rate)
+
+TORD: Turnover Percentage Committed (Steal Rate)
+
+ORB: Offensive Rebound Rate
+
+DRB: Offensive Rebound Rate Allowed
+
+FTR : Free Throw Rate (How often the given team shoots Free Throws)
+
+FTRD: Free Throw Rate Allowed
+
+X2P_O: Two-Point Shooting Percentage
+
+X2P_D: Two-Point Shooting Percentage Allowed
+
+X3P_O: Three-Point Shooting Percentage
+
+X3P_D: Three-Point Shooting Percentage Allowed
+
+ADJ_T: Adjusted Tempo (An estimate of the tempo (possessions per 40 minutes) a team would have against the team that wants to play at an average Division I tempo)
+
+WAB: Wins Above Bubble (The bubble refers to the cut off between making the NCAA March Madness Tournament and not making it)
+
+win_pct: Number of games won divided by number of games played
+
+win_margin: difference between ADJOE and ADJDE
+
+made_postseason: TRUE/FALSE if the team made the postseason
+
+We also created a few new variables we thought would be interesting to look at. The first one was just a simple win percentage; we computed this by dividing W (wins) by G (total games) for each team. The next variable we computed was win_margin by taking the difference between ADJOE and ADJDE, which in turn gives the average amount a team would be expected to win or lose by based on their adjusted offensive and defensive efficiency. Finally, we created a simple TRUE/FALSE column regarding if the team made it into the postseason, called made_postseason. In these features, variables that mention the term “allowed” is equivalent to “give up.” For example, DRB, which is the Offensive Rebound Rate Allowed, means how many rebounds an offense gave up to the defense.
+
+We were also able to find a measure of academics from the NCAA^[https://web3.ncaa.org/aprsearch/aprsearch].  From this data, the measure of academics we plan to use in our analysis is the FOURYEAR_SCORE variable which is a measure of the Academic Progress Rate (APR) score.  A team’s APR score is calculated based on the eligibility of its players.  A team earns points for each member who is academically eligible, meaning they are not failing classes or have other academic restrictions.  These points are then divided by the total points possible and multiplied by 1000.  So 1000 is perfect eligibility, and teams must earn at least 930 to compete in postseason tournaments.  There are other penalties too if teams underperform academically over time, which limit the number of hours available for a team to practice.
+
+We were able to combine this academic dataset with the previous basketball dataset with the function inner_join by filtering to only include universities with men’s basketball teams in 2014.  Our two datasets did not have a common data playground identifier, so we had to perform an extensive amount of manual string manipulation to change the name of the university to the name of the team in order to pair up the two datasets. 
+
+
+```{r, echo=FALSE, message=FALSE}
+library(dplyr) 
+
+bball_2014 = read.csv("cbb14.csv")
+
+academics <- read.csv("academic-updated.csv") %>%
+  rename(TEAM = SCHOOL_NAME) %>%
+  filter(SPORT_NAME == "Men's Basketball") %>%
+  select(TEAM, SCHOOL_TYPE, FOURYEAR_SCORE)
+
+combined <- inner_join(bball_2014, academics, by = "TEAM") %>% # merge
+  mutate(pct_win = W/G,
+         win_margin = ADJOE - ADJDE,
+         made_postseason = case_when(
+           is.na(POSTSEASON) ~ 0,
+           TRUE ~ 1),
+         made_post_w = case_when(
+           is.na(POSTSEASON) ~ FALSE,
+           TRUE ~ TRUE)
+         ) %>%
+  select(TEAM, BARTHAG, EFG_O, EFG_D, TOR, TORD, ORB, DRB, FTR, FTRD, X2P_O,
+         X2P_D, X3P_O, X3P_D, ADJ_T, WAB, pct_win, win_margin, made_postseason, made_post_w,
+         FOURYEAR_SCORE)
+```
+
+### Methods Section:
+
+A linear regression is a statistical approach to modeling the relationship between a scalar response and one or more explanatory variables. If there is only one explanatory variable it is a simple linear regression, and for more than one explanatory variable it is called a multiple linear regression. We chose to use a multiple linear regression model in our analysis because we wanted to see if there was a relationship between a team's APR score and the actual basketball statistics found from the athletic season.  We will apply a Bonferroni correction to the p-values in the linear regression model summary to avoid multiple testing.
+
+We also chose to include confidence intervals based on our multiple linear regression model in order to see a range of values for our coefficients.  We chose a 95% confidence interval because this gives us a good idea of what range the true coefficients will be between. 
+
+
+Next, we chose to include an ANOVA test because we wanted to compare our linear regression model with all of the predictors from before with a more simple linear regression model with only the significant predictor free throw rate.  A good model not only needs to fit data well, but also it should be only as complex as necessary to describe a dataset well.  For example, if you are choosing between a very simple model with only one predictor and a very complex model with ten predictors, the very complex model needs to provide a much better fit to the data in order to justify its increased complexity.  With this ANOVA test, we will justify the use of our more complex model over the simple model.
+
+
+A final question we wanted to investigate as another measure of team success is if the mean APR score for teams that made the postseason is significantly higher than teams that did not make the postseason.  In order to answer this question, we chose to include a t-test to compare the mean APR scores of teams that made the postseason with those that did not.  We wanted to see if there is a statistically significant difference in the means of the two groups.  The null hypothesis is that there is no difference between the mean APR scores of the two groups.  Whereas, the alternative hypothesis is that the mean APR score for teams that made the postseason is statistically higher than the mean APR score for the teams that did not make the postseason.
+
+
+### Results Section:
+
+Using each of the aforementioned methods aids us in supporting the correlation of some basketball features and academic success.  We began by running a linear regression with each of the variables listed above as predictors for APR Score.
+
+##### Multiple Linear Regression Model: 
+
+```{r, echo=FALSE}
+fit_complex <- lm(FOURYEAR_SCORE ~ (BARTHAG + EFG_O + EFG_D + TOR + TORD + ORB + DRB + FTR + FTRD + X2P_O + X2P_D + X3P_O + X3P_D + ADJ_T + WAB + pct_win + win_margin + made_postseason), data = combined)
+
+summary(fit_complex)
+```
+
+
+From this regression, we can see that a few of our variables have a statistically significant relationship with APR score. win_margin is the only variable that is under an alpha = 0.05 significance level with a p-value of 0.01716. Finally, there is one variable with an alpha = 0.001 significance level, and it is FTR with a p-value of 0.00095.  We also see that we obtained an R-squared value of 0.2803.  This means that only 20.38% of the variance in the data is explained by the model.
+
+
+##### Bonferoni Corrections:
+
+As we can see, two variables are significant, meaning they have a p-value less than an alpha level of 0.05.  However, because we have 18 features in our linear regression model, we would expect 0.9 (or round up to 1) variable to be significant just by chance, even if basketball statistics had no real effect on APR score.  The significance of these p-values are simply a binomial random variable Binomial(16, 0.05).  Thus, in order to account for this randomness, we will apply a Bonferroni correct to our p-values.  We will multiply each p-value by 18 (the number of predictors in our model) and again compare our adjusted p-values to the alpha level of 0.05.
+
+```{r, echo=FALSE}
+p.adjust(coef(summary(fit_complex))[,4], "bonferroni")
+```
+
+
+After applying this Bonferroni correction, we see that the win_margin predictor which was statistically significant before is no longer significant.  However, the free throw rate variable which was significant at the alpha level of 0.001 is now significant at the alpha level of 0.05.  
+
+In order to visualize the coefficients of our features better, we chose to make a graph in ascending order of coefficient value.
+
+```{r, echo=FALSE}
+library(ggplot2)
+names = c("Intercept", "Power Rating", "Field Goal Percent Shot", "Field Goal Percent Allowed", "Turnover Rate", "Steal Rate", "Offensive Rebound Rate", "Rebound Rate Allowed", "Free Throw Rate", "Free Throw Rate Allowed", "Two-Point Shooting Percentage", "Two-Point Shooting Percentage Allowed", "Three-Point Shooting Percentage", "Three-Point Shooting Percentage Allowed", "Possessions per 40 Min.", "Wins Above Bubble", "Winning Percentage", "Expected Point Differential", "Made Postseason")
+
+coef = data.frame(names,
+                  coef = unname(coef(summary(fit_complex))[,1])) %>%
+  filter(names!="Intercept") %>%
+  arrange(by=coef)
+
+coef %>%
+  ggplot() +
+  geom_col(aes(x= reorder(names, coef), y=coef), fill="blue") +
+  xlab("Predictors") +
+  ylab("Coefficient Estimate") +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  ggtitle("Coefficients of Linear Regression Predictors", subtitle="On Four Year APR Score")
+```
+
+We can see from our graph of the complex linear regression coefficients that the feature with the most negative coefficient is a team’s Power Rating with a coefficient of -19.7554.  On the other hand, the feature with the most positive coefficient is a team’s Winning Percentage with a coefficient of 12.2516.  
+
+
+After applying the Bonferroni correction to our predictors, the win_margin predictor was no longer significant.  However, we still thought it would be interesting to visualize this predictor graphically with a scatter plot. This plot shows the relationship between a team's expected point differential and respective APR score. We also decided to distinguish the teams that made the postseason by changing the color of their respective data point.
+
+```{r, echo=FALSE, message=FALSE}
+combined %>%
+  ggplot(aes(x=win_margin, y=FOURYEAR_SCORE)) +
+  geom_point(aes(color=made_post_w)) +
+  geom_smooth(method="lm", se=FALSE) +
+  scale_color_discrete("Made Postseason?") +
+  geom_hline(yintercept = 930, linetype="dashed", color="black") +
+  ggtitle("Four Year APR Score versus Expected Point Differential") +
+  xlab("Expected Point Differential") +
+  ylab("Four Year APR Score")
+```
+
+From this graph, we see a positive relationship between a team's expected point differential and APR score.  This makes sense to us because the coefficient for a team's expected point differential was 1.9.  This means that when holding all other predictors fixed, for each additional point a team is expected to win by, their APR score would also increase by about 2 points.  
+
+We added a horizontal dashed line at the APR score of 930, because this is where the cut off for eligibility to participate in the postseason is.  14 teams this year did not make the APR score cut off and were thus not eligible to compete.  These teams had expected point differentials all less than zero, meaning they were expected to lose against the average Division I team.
+
+In this graph, one can also see that the teams that made the postseason for the most part have higher expected point differentials than the teams that did not make the postseason.  However, there is still an area between an expected point differential of about -10 to about 15 where there is a greater mix of teams that did and did not make the postseason.
+
+Our second plot shows the relationship between a team's free throw rate and respective APR score. Free throw rate was the only feature to stay statistically significant at an alpha level of 0.05, so we also wanted to visualize a scatter plot of this variable.  We again decided to distinguish the teams that made the postseason by changing the color of their respective data point.
+
+```{r, echo=FALSE, message=FALSE}
+combined %>%
+  ggplot(aes(x=FTR, y=FOURYEAR_SCORE)) +
+  geom_point(aes(color=made_post_w)) +
+  geom_smooth(method="lm", se=FALSE) +
+  scale_color_discrete("Made Postseason?") +
+  geom_hline(yintercept = 930, linetype="dashed", color="black") +
+  ggtitle("Four Year APR Score versus Free Throw Rate") +
+  xlab("Free Throw Rate") +
+  ylab("Four Year APR Score")
+```
+
+From this graph, we see a negative relationship between a team's free throw rate and APR score.  This negative relationship was especially surprising to us as we were expecting a positive relationship between free throw rate and APR score from our background knowledge of basketball.
+
+We again added a horizontal dashed line at the APR score of 930, distinguishing teams that were eligible for the postseason.  The free throw rate for teams that were under an APR score of 930 were much more variable, ranging from just under 60 to just under 35.
+
+In our linear model above, free throw rate had a coefficient of -0.8155.  This means when holding all other predictors fixed, for each additional free throw that a team makes, their APR score would also decrease by about 1 point.  
+
+Also, in this graph, one can see that the teams that made the postseason for the most part are more intermixed with the teams that did not make the postseason in their free throw rate.
+
+
+##### Confidence Intervals: 
+
+```{r, echo=FALSE}
+confint(fit_complex)
+```
+
+
+Each variable had a unique 95% confidence interval, giving us a good idea of the expected coefficients each variable should be between. For example, we are 95% confident that the true coefficient for a team's win margin is between 0.3481336 and 3.54604078.
+
+
+Each of the confidence intervals above (except for win_margin and FTR) include zero.  This is interesting because having a coefficient of zero means the variable has no effect on the team's APR score.  As seen in the summary of our linear model above, win_margin and FTR were the only two variables that were significant prior to the Bonferroni correction.
+
+
+##### ANOVA Test:
+
+```{r, include=FALSE}
+fit_simple <- lm(FOURYEAR_SCORE ~ FTR, data=combined)
+
+summary(fit_simple)
+```
+
+
+```{r, echo=FALSE}
+anova(fit_simple, fit_complex)
+```
+
+We use an ANOVA test to compare our multiple linear regression model with all predictors involved to a more simple linear regression model with only the free throw rate feature as a predictor.  From this comparison with ANOVA, we obtained a p-value of 2.322e-14.  Our p-value is statistically significant at the alpha level of less than 0.001.  This means that our complex model did lead to a statistically improved fit over the more simple linear regression model with only the significant variable in our model.  Thus, we will continue our analysis with the multiple linear regression as it is a better fit for our data.
+
+
+##### T-Test
+
+Finally, we wanted to see if there was a statistically significant difference between the mean APR scores of teams that made the postseason and teams that did not. We used a t-test to compare the mean APR scores of the teams in each group.  The null hypothesis in this test is that the means APR scores of each group are the same.  The alternative hypothesis is that the mean APR scores of teams that made the postseason is greater than the mean APR score of teams that did not make the postseason.
+
+```{r, echo=FALSE}
+post <- combined %>%
+  filter(made_postseason == TRUE) %>%
+  pull(FOURYEAR_SCORE)
+
+no_post <- combined %>%
+  filter(made_postseason == FALSE) %>%
+  pull(FOURYEAR_SCORE)
+
+t.test(post, no_post, alternative = "greater")
+```
+
+The mean APR scores for teams that made the postseason was 970.5224 while teams that did not make the postseason had a lower mean APR score of 959.5809.  After running a t-test comparing the mean APR scores of these two groups, we obtained a p-value of .00004007.  Because the p-value we obtained is statistically significant at an alpha level of less than 0.001, we reject the null hypothesis that the average APR scores of the two groups are the same.  Thus, we can say that the average APR scores of teams that made the postseason are statistically higher than the average APR scores of teams that did not make the postseason.
+
+
+### Conclusion:
+
+We performed extensive statistical analysis using linear models, ANOVA testing, and confidence intervals on the 2014 Division I men’s basketball teams and academics from the NCAA. From our analysis, we found that some features which are representative of a team’s hard work and drive on the basketball court like free throw rate and expected point differential are correlated with academic eligibility. Moreover, from our hypothesis test, we found that whether or not a team made the postseason was another factor that had a positive correlation with APR scores. This means the teams that made the postseason tended to also do better academically, as they had a statistically higher mean APR score. 
+
+While we were able to see some correlations between academic performance and athletic performance, there are many limitations on the conclusions we can make due to not having access to certain data. For example, there are likely differences in budgets and how much time each team spends practicing, which may have an influence on how much time the athletes dedicate to their schoolwork, potentially impacting the team’s APR score. In addition, it may be harder to succeed academically at some schools compared to others, and we do not have a way to account for this. There also may be reasons for correlations between academic performance and on-court success that we are not able to account for in our analyses. For example, it is possible that the teams that are having better basketball seasons practice less, and therefore may give the athletes more time to dedicate to their academics. One final potential limitation is that we chose data from seven years ago. There may be external and confounding factors that not only occurred in 2014 but also have changed since that time which we are not aware of or able to take into account in our analyses. Although initially we wanted to steer clear of recent years because of the influence the COVID-19 pandemic may have on academic and basketball performance, this comparison may be interesting to look into if we had more time. 
+
+All of these limitations and more make it difficult to obtain any conclusive results on the correlations between academic and athletic success. However, with the information and time we had, we were still able to see that some factors like expected point differential (prior to the Bonferroni correction), free throw rate, and whether or not the team made the postseason cement the relationship between the two. Further analyses will help us to further investigate the relationship between the hardworking and motivated teams that pursue all their efforts to excel on the basketball court and in the classroom. 
+
+We cannot conclude that there is a causal relationship between a team's on court performance and academic success.  However, our analysis may help both students and universities make more educated decisions on how to help student-athletes pick a college that aligns with their basketball and academic priorities.  It may also help coaches and athletes create an excelling program on the court and in the classroom.
+
+Overall, deciding on a college is a crucial decision, especially for student athletes, and we really enjoyed learning more about the relationship between a school's academics and athletics.
+
+
+### Citations:
+
+"Academic Progress Rate". Web3.Ncaa.Org, 2021, https://web3.ncaa.org/aprsearch/aprsearch.
+
+"NCAA College Men's Basketball DI 2014 Team Stats | NCAA.Com". Ncaa.Com, 2021, 
+https://www.ncaa.com/stats/basketball-men/d1/2014/team/217.
